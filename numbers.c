@@ -59,7 +59,7 @@ void displayProgress() {
             fflush(stdout);
         }
 
-        usleep(2000); // Update every 2ms
+        usleep(200); // Update every 0.2ms
     }
 }
 
@@ -112,15 +112,15 @@ int main() {
     struct timeval start, end, start_total, end_total;
     double time_used, total_time_used;
 
-    // Start total timer
-    gettimeofday(&start_total, NULL);
-
     // Thread arguments Part 1
     ThreadArgs thread_args[NUM_THREADS];
 
     printf("\033[92m> numbers.c 2.0\n");
     printf("\nEnter the size of the array: ");
     scanf("%d", &arraySize);
+
+    // Start total timer
+    gettimeofday(&start_total, NULL);
 
     // Allocate memory for the global array
     globalArray = (int *)malloc(arraySize * sizeof(int));
@@ -185,6 +185,9 @@ int main() {
     aggregateCounts(counts, total_counts);
     sortArray(globalArray, arraySize, total_counts);
 
+    // Clean up
+    free(globalArray);
+
     // Stop the timer
     gettimeofday(&end, NULL); 
 
@@ -213,7 +216,6 @@ int main() {
         printf("\n\033[92m  - Total execution time: %.3fms\n\n", total_time_used);
     }
 
-    // Clean up and exit
-    free(globalArray);
+    // Exit
     return 0;
 }
