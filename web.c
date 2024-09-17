@@ -14,6 +14,7 @@
 #define PORT 8080
 #define BUFFER_SIZE 8192
 #define SMALL_BUFFER 1024
+#define ROOT_DIR "./www" // Define the root directory
 
 typedef struct {
     int client_socket;
@@ -53,14 +54,17 @@ mime_map mime_types[] = {
 const char* get_mime_type(const char *path) {
     const char *ext = strrchr(path, '.');
     if (!ext) {
+        printf("No extension found for path: %s. Defaulting to application/octet-stream\n", path);
         return "application/octet-stream"; // Default MIME type
     }
 
     for (int i = 0; mime_types[i].extension != NULL; i++) {
         if (strcasecmp(ext, mime_types[i].extension) == 0) {
+            printf("MIME type for %s: %s\n", path, mime_types[i].mime_type);
             return mime_types[i].mime_type;
         }
     }
+    printf("Unknown extension '%s' for path: %s. Defaulting to application/octet-stream\n", ext, path);
     return "application/octet-stream"; // Default MIME type
 }
 
@@ -74,8 +78,14 @@ void send_response(int client_socket, const char *status, const char *content_ty
         "Connection: close\r\n\r\n",
         status, content_type, body_length);
 
-    send(client_socket, header, header_length, 0);
-    send(client_socket, body, body_length, 0);
+    if (send(client_socket, header, header_length, 0) == -1) {
+        perror("send header failed");
+        return;
+    }
+    if (send(client_socket, body, body_length, 0) == -1) {
+        perror("send body failed");
+        return;
+    }
 }
 
 // Function to send HTTP responses without a message body
@@ -88,7 +98,9 @@ void send_simple_response(int client_socket, const char *status, const char *con
         "Connection: close\r\n\r\n",
         status, content_type);
 
-    send(client_socket, header, header_length, 0);
+    if (send(client_socket, header, header_length, 0) == -1) {
+        perror("send simple response failed");
+    }
 }
 
 // Function to serve static files
@@ -96,18 +108,27 @@ void serve_static_file(int client_socket, const char *path) {
     // Prevent directory traversal
     if (strstr(path, "..")) {
         send_simple_response(client_socket, "400 Bad Request", "text/plain");
+        printf("Directory traversal attempt detected: %s\n", path);
         return;
     }
 
     // Handle root path
-    char file_path[SMALL_BUFFER] = ".";
-    strcat(file_path, path);
+    char file_path[SMALL_BUFFER] = ROOT_DIR;
+    if (strcmp(path, "/") == 0) {
+        strcat(file_path, "/index.html");
+        printf("Path set to /index.html\n");
+    } else {
+        strcat(file_path, path);
+    }
+
+    printf("File path: %s\n", file_path);
 
     // Open the requested file
     int file_fd = open(file_path, O_RDONLY);
     if (file_fd == -1) {
         // File not found
         send_simple_response(client_socket, "404 Not Found", "text/plain");
+        printf("File not found: %s\n", file_path);
         return;
     }
 
@@ -120,9 +141,11 @@ void serve_static_file(int client_socket, const char *path) {
         return;
     }
     long file_size = st.st_size;
+    printf("Serving file: %s (Size: %ld bytes)\n", file_path, file_size);
 
     // Determine MIME type
     const char *mime_type = get_mime_type(file_path);
+    printf("MIME type: %s\n", mime_type);
 
     // Create response headers
     char header[SMALL_BUFFER];
@@ -134,26 +157,44 @@ void serve_static_file(int client_socket, const char *path) {
         mime_type, file_size);
 
     // Send headers
-    send(client_socket, header, header_length, 0);
+    if (send(client_socket, header, header_length, 0) == -1) {
+        perror("send header failed");
+        close(file_fd);
+        return;
+    }
 
-    // Send file content
+    // Send file content with proper send handling
     ssize_t bytes;
     char buffer[BUFFER_SIZE];
     while ((bytes = read(file_fd, buffer, BUFFER_SIZE)) > 0) {
-        send(client_socket, buffer, bytes, 0);
+        ssize_t total_sent = 0;
+        while (total_sent < bytes) {
+            ssize_t sent = send(client_socket, buffer + total_sent, bytes - total_sent, 0);
+            if (sent == -1) {
+                perror("send failed");
+                close(file_fd);
+                return;
+            }
+            total_sent += sent;
+        }
+    }
+
+    if (bytes == -1) {
+        perror("read failed");
     }
 
     close(file_fd);
 }
 
 // Function to handle POST /ping
-void handle_post_ping(int client_socket, const char *body, size_t body_length, struct timeval start_time) {
+void handle_post_ping(int client_socket, const char *body) {
     (void)body; // Unused in this handler
 
     // Create JSON response
     char response_body[SMALL_BUFFER];
     int response_length = snprintf(response_body, sizeof(response_body),
-        "{ \"response\": \"pong\" }");
+        "{ \"response\": \"Pong!\" }"
+    );
 
     // Send JSON response
     send_response(client_socket, "200 OK", "application/json", response_body, response_length);
@@ -165,10 +206,6 @@ void *handle_client(void *arg) {
     int client_socket = cinfo->client_socket;
     char buffer[BUFFER_SIZE];
     ssize_t received;
-
-    // Start timing
-    struct timeval start_time;
-    gettimeofday(&start_time, NULL);
 
     // Receive data
     received = recv(client_socket, buffer, BUFFER_SIZE - 1, 0);
@@ -197,16 +234,18 @@ void *handle_client(void *arg) {
         char *body = strstr(buffer, "\r\n\r\n");
         if (body) {
             body += 4; // Move past the "\r\n\r\n"
-            size_t body_length = received - (body - buffer);
-            handle_post_ping(client_socket, body, body_length, start_time);
+            // size_t body_length = received - (body - buffer);
+            handle_post_ping(client_socket, body);
         }
         else {
             send_simple_response(client_socket, "400 Bad Request", "text/plain");
+            printf("Bad request: No body found\n");
         }
     }
     else {
         // Method not supported
         send_simple_response(client_socket, "501 Not Implemented", "text/plain");
+        printf("Unsupported method or path: %s %s\n", method, path);
     }
 
     close(client_socket);
