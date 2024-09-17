@@ -6,7 +6,7 @@
 #include <sys/time.h>
 
 #define MAX_VALUE 32767  // Maximum value for 16-bit integers
-#define NUM_THREADS 3 // Number of threads
+#define NUM_THREADS 8 // Number of threads
 
 // Global array and its size
 int *globalArray;
@@ -26,42 +26,7 @@ typedef struct {
 // Function prototypes
 void *countingSortThread(void *args);
 void aggregateCounts(int counts[][MAX_VALUE + 1], int total_counts[]);
-void sortArray(int *array, int size, int total_counts[]);
-
-// Function to display progress
-void displayProgress() {
-    int prev_steps = 0;
-    while (1) {
-        int curr_steps;
-        pthread_mutex_lock(&steps_mutex);
-        curr_steps = steps;
-        pthread_mutex_unlock(&steps_mutex);
-
-        if (prev_steps != curr_steps) {
-            // Calculate the percentage of completion
-            float percentage = (float)curr_steps / (float)arraySize * 100;
-            
-            // Fancy progress bar
-            printf("\033[92m\r[");
-            int pos = (int)(percentage / 2);
-            for (int i = 0; i < 50; ++i) {
-                if (i < pos) {
-                    printf("\033[92m=");
-                } else if (i == pos) {
-                    printf("\033[93m>");
-                } else {
-                    printf(" ");
-                }
-            }
-            printf("\033[92m] %.2f%%", percentage);
-            
-            prev_steps = curr_steps;
-            fflush(stdout);
-        }
-
-        usleep(200); // Update every 0.2ms
-    }
-}
+void sortArray(int *array, int total_counts[]);
 
 void *fillArrayThread(void *args) {
     ThreadArgs *thread_args = (ThreadArgs *)args;
@@ -98,7 +63,7 @@ void aggregateCounts(int counts[][MAX_VALUE + 1], int total_counts[]) {
     }
 }
 
-void sortArray(int *array, int size, int total_counts[]) {
+void sortArray(int *array, int total_counts[]) {
     int index = 0;
     for (int i = 0; i <= MAX_VALUE; i++) {
         for (int j = 0; j < total_counts[i]; j++) {
@@ -115,9 +80,12 @@ int main() {
     // Thread arguments Part 1
     ThreadArgs thread_args[NUM_THREADS];
 
-    printf("\033[92m> numbers.c 2.0\n");
+    printf("\033[92m> numbers.c\n");
     printf("\nEnter the size of the array: ");
-    scanf("%d", &arraySize);
+    if (scanf("%d", &arraySize) != 1) {
+        fprintf(stderr, "Invalid input\n");
+        return 1;
+    }
 
     // Start total timer
     gettimeofday(&start_total, NULL);
@@ -128,11 +96,8 @@ int main() {
         fprintf(stderr, "Memory allocation failed\n");
         return 1;
     }
-    printf("\nFilling the array with random 16-bit integers...\n");
 
-    // Start the display progress thread
-    pthread_t progress_thread;
-    pthread_create(&progress_thread, NULL, (void*)displayProgress, NULL);
+    printf("\nFilling the array with random 16-bit integers...\n");
 
     // Create threads for filling the array
     pthread_t fill_threads[NUM_THREADS];
@@ -145,10 +110,6 @@ int main() {
     for (int i = 0; i < NUM_THREADS; i++) {
         pthread_join(fill_threads[i], NULL);
     }
-
-    // Wait for the progress thread to finish
-    pthread_cancel(progress_thread);
-    pthread_join(progress_thread, NULL);
 
     printf("\nArray filled with random numbers.\n");
 
@@ -183,7 +144,7 @@ int main() {
     printf("\nSorting the array...\n");
     int total_counts[MAX_VALUE + 1] = {0};
     aggregateCounts(counts, total_counts);
-    sortArray(globalArray, arraySize, total_counts);
+    sortArray(globalArray, total_counts);
 
     // Clean up
     free(globalArray);
