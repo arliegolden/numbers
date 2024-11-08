@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -pthread -O3
 
-TARGETS = selection numbers glazer web
+TARGETS = selection numbers glazer web arrays
 
 all: $(TARGETS)
 
@@ -17,7 +17,10 @@ glazer: glazer.c
 web: web.c
 	$(CC) $(CFLAGS) -o $@ $<
 
+arrays: arrays.c
+	$(CC) $(CFLAGS) -o $@ $<
+
 clean:
-	rm -f $(TARGETS)
+	rm -f $(TARGETS) *.o *.log
 
 .PHONY: all clean

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snake Game</title>
+    <!-- Bulma CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.9.4/css/bulma.min.css">
+    <!-- jQuery -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <style>
+        .game-container {
+            width: 400px;
+            height: 400px;
+            border: 2px solid #363636;
+            position: relative;
+            background-color: #f5f5f5;
+        }
+        .snake-segment {
+            width: 20px;
+            height: 20px;
+            background-color: #00d1b2;
+            position: absolute;
+            border-radius: 4px;
+        }
+        .food {
+            width: 20px;
+            height: 20px;
+            background-color: #ff3860;
+            position: absolute;
+            border-radius: 50%;
+        }
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <section class="section">
+        <div class="container">
+            <div class="columns is-centered">
+                <div class="column is-narrow">
+                    <div class="box">
+                        <h1 class="title has-text-centered">Snake Game</h1>
+                        <div class="field">
+                            <div class="control">
+                                <button class="button is-primary is-fullwidth mb-4" id="startBtn">Start Game</button>
+                            </div>
+                        </div>
+                        <div class="has-text-centered mb-4">
+                            <span class="tag is-info is-medium">Score: <span id="score">0</span></span>
+                        </div>
+                        <div class="game-container" id="gameContainer">
+                            <div class="game-over" id="gameOver">
+                                <h2 class="title is-4 has-text-danger">Game Over!</h2>
+                                <button class="button is-primary" id="restartBtn">Play Again</button>
+                            </div>
+                        </div>
+                        <div class="content has-text-centered mt-4">
+                            <p class="help">Use arrow keys to control the snake</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        $(document).ready(function() {
+            const GRID_SIZE = 20;
+            const GAME_SIZE = 400;
+            const GRID_COUNT = GAME_SIZE / GRID_SIZE;
+            let snake = [];
+            let food = {};
+            let direction = 'right';
+            let gameInterval;
+            let score = 0;
+            let isGameRunning = false;
+
+            function initGame() {
+                snake = [
+                    { x: 6, y: 10 },
+                    { x: 5, y: 10 },
+                    { x: 4, y: 10 }
+                ];
+                direction = 'right';
+                score = 0;
+                updateScore();
+                createFood();
+                drawGame();
+            }
+
+            function drawGame() {
+                $('#gameContainer').find('.snake-segment, .food').remove();
+                
+                // Draw snake
+                snake.forEach((segment, index) => {
+                    const segmentElement = $('<div>').addClass('snake-segment').css({
+                        left: segment.x * GRID_SIZE + 'px',
+                        top: segment.y * GRID_SIZE + 'px'
+                    });
+                    if (index === 0) {
+                        segmentElement.css('background-color', '#00b89c');
+                    }
+                    $('#gameContainer').append(segmentElement);
+                });
+
+                // Draw food
+                const foodElement = $('<div>').addClass('food').css({
+                    left: food.x * GRID_SIZE + 'px',
+                    top: food.y * GRID_SIZE + 'px'
+                });
+                $('#gameContainer').append(foodElement);
+            }
+
+            function createFood() {
+                do {
+                    food = {
+                        x: Math.floor(Math.random() * GRID_COUNT),
+                        y: Math.floor(Math.random() * GRID_COUNT)
+                    };
+                } while (snake.some(segment => segment.x === food.x && segment.y === food.y));
+            }
+
+            function moveSnake() {
+                const head = { ...snake[0] };
+
+                switch (direction) {
+                    case 'up': head.y--; break;
+                    case 'down': head.y++; break;
+                    case 'left': head.x--; break;
+                    case 'right': head.x++; break;
+                }
+
+                // Check collision with walls
+                if (head.x < 0 || head.x >= GRID_COUNT || head.y < 0 || head.y >= GRID_COUNT) {
+                    gameOver();
+                    return;
+                }
+
+                // Check collision with self
+                if (snake.some(segment => segment.x === head.x && segment.y === head.y)) {
+                    gameOver();
+                    return;
+                }
+
+                snake.unshift(head);
+
+                // Check if food is eaten
+                if (head.x === food.x && head.y === food.y) {
+                    score += 10;
+                    updateScore();
+                    createFood();
+                } else {
+                    snake.pop();
+                }
+
+                drawGame();
+            }
+
+            function updateScore() {
+                $('#score').text(score);
+            }
+
+            function gameOver() {
+                clearInterval(gameInterval);
+                isGameRunning = false;
+                $('#gameOver').fadeIn();
+            }
+
+            function startGame() {
+                if (isGameRunning) return;
+                
+                $('#gameOver').hide();
+                initGame();
+                isGameRunning = true;
+                gameInterval = setInterval(moveSnake, 150);
+            }
+
+            // Event Handlers
+            $('#startBtn, #restartBtn').click(function() {
+                startGame();
+            });
+
+            $(document).keydown(function(e) {
+                if (!isGameRunning) return;
+
+                const key = e.which;
+                const newDirection = {
+                    37: 'left',
+                    38: 'up',
+                    39: 'right',
+                    40: 'down'
+                }[key];
+
+                if (newDirection) {
+                    // Prevent reversing direction
+                    const opposites = {
+                        left: 'right',
+                        right: 'left',
+                        up: 'down',
+                        down: 'up'
+                    };
+
+                    if (opposites[newDirection] !== direction) {
+                        direction = newDirection;
+                    }
+
+                    e.preventDefault();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
